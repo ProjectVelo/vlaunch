@@ -1,0 +1,6 @@
+name: HelloApp
+version: 1.0.0
+author: Unammed Developer
+license: BSD-3-Clause
+description: Hello World app for VeloOS
+entry: /exec/base

@@ -1,0 +1,288 @@
+# BSD 3-Clause License
+# 
+# Copyright (c) 2025, Ariz Kamizuki
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+# 
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+# 
+# 3. Neither the name of the copyright holder nor the names of its
+#    contributors may be used to endorse or promote products derived from
+#    this software without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# Professional Application Bundle Launcher Makefile
+# Version: 1.0.0
+# Author: Ariz Kamizuki
+# Date: 2025
+
+# Project configuration
+PROJECT_NAME = launcher
+VERSION = 1.0.0
+TARGET = $(PROJECT_NAME)
+SOURCES = src/launcher.c
+HEADERS = 
+OBJECTS = $(SOURCES:.c=.o)
+
+# Compiler and tools
+CC = gcc
+STRIP = strip
+INSTALL = install
+TAR = tar
+GZIP = gzip
+
+# Directories
+SRCDIR = src
+BUILDDIR = build
+DISTDIR = dist
+DOCDIR = doc
+TESTDIR = tests
+
+# Installation directories
+PREFIX = /usr/local
+BINDIR = $(PREFIX)/bin
+MANDIR = $(PREFIX)/share/man/man1
+DOCDIR_INSTALL = $(PREFIX)/share/doc/$(PROJECT_NAME)
+
+# Compiler flags
+CXXFLAGS = -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion
+CXXFLAGS += -fstack-protector-strong -D_FORTIFY_SOURCE=2
+CXXFLAGS += -DVERSION=\"$(VERSION)\" -DPROJECT_NAME=\"$(PROJECT_NAME)\"
+
+# Linker flags
+LDFLAGS = -Wl,-z,relro -Wl,-z,now
+LDLIBS = -lstdc++fs
+
+# Build configurations
+DEBUG_FLAGS = -g -O0 -DDEBUG -fsanitize=address -fsanitize=undefined
+RELEASE_FLAGS = -O2 -DNDEBUG -flto
+PROFILE_FLAGS = -pg -O2
+
+# Default build type
+BUILD_TYPE ?= release
+
+# Set flags based on build type
+ifeq ($(BUILD_TYPE),debug)
+    CXXFLAGS += $(DEBUG_FLAGS)
+    LDFLAGS += -fsanitize=address -fsanitize=undefined
+    TARGET_SUFFIX = _debug
+else ifeq ($(BUILD_TYPE),profile)
+    CXXFLAGS += $(PROFILE_FLAGS)
+    TARGET_SUFFIX = _profile
+else
+    CXXFLAGS += $(RELEASE_FLAGS)
+    TARGET_SUFFIX =
+endif
+
+# Final target name
+FINAL_TARGET = $(TARGET)$(TARGET_SUFFIX)
+
+# Platform detection
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
+ifeq ($(UNAME_S),Linux)
+    PLATFORM = linux
+    LDLIBS += -lpthread
+else ifeq ($(UNAME_S),Darwin)
+    PLATFORM = macos
+    CXXFLAGS += -mmacosx-version-min=10.14
+else
+    PLATFORM = unknown
+endif
+
+# Colors for output
+RED = \033[0;31m
+GREEN = \033[0;32m
+YELLOW = \033[0;33m
+BLUE = \033[0;34m
+NC = \033[0m # No Color
+
+# Default target
+.PHONY: all
+all: $(FINAL_TARGET)
+
+# Build the main target
+$(FINAL_TARGET): $(OBJECTS)
+	@echo "$(GREEN)Linking $(FINAL_TARGET)...$(NC)"
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(LDFLAGS) -o $(BUILDDIR)/$(FINAL_TARGET) $(OBJECTS) $(LDLIBS)
+	@echo "$(GREEN)Build completed: $(BUILDDIR)/$(FINAL_TARGET)$(NC)"
+
+# Compile source files
+%.o: %.c
+	@echo "$(BLUE)Compiling $<...$(NC)"
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Clean build artifacts
+.PHONY: clean
+clean:
+	@echo "$(YELLOW)Cleaning build artifacts...$(NC)"
+	rm -f $(OBJECTS)
+	rm -rf $(BUILDDIR)
+	rm -rf $(DISTDIR)
+	rm -f *.gcda *.gcno *.prof gmon.out
+	@echo "$(GREEN)Clean completed$(NC)"
+
+# Clean everything including dependencies
+.PHONY: distclean
+distclean: clean
+	rm -f $(TARGET) $(TARGET)_debug $(TARGET)_profile
+	rm -f *.log *.tmp
+
+# Install the application
+.PHONY: install
+install: $(FINAL_TARGET)
+	@echo "$(GREEN)Installing $(PROJECT_NAME)...$(NC)"
+	$(INSTALL) -d $(DESTDIR)$(BINDIR)
+	$(INSTALL) -m 755 $(BUILDDIR)/$(FINAL_TARGET) $(DESTDIR)$(BINDIR)/$(PROJECT_NAME)
+	@if [ -f $(PROJECT_NAME).1 ]; then \
+		$(INSTALL) -d $(DESTDIR)$(MANDIR); \
+		$(INSTALL) -m 644 $(PROJECT_NAME).1 $(DESTDIR)$(MANDIR)/; \
+		$(GZIP) -f $(DESTDIR)$(MANDIR)/$(PROJECT_NAME).1; \
+	fi
+	@if [ -f README.md ]; then \
+		$(INSTALL) -d $(DESTDIR)$(DOCDIR_INSTALL); \
+		$(INSTALL) -m 644 README.md $(DESTDIR)$(DOCDIR_INSTALL)/; \
+	fi
+	@echo "$(GREEN)Installation completed$(NC)"
+
+# Uninstall the application
+.PHONY: uninstall
+uninstall:
+	@echo "$(YELLOW)Uninstalling $(PROJECT_NAME)...$(NC)"
+	rm -f $(DESTDIR)$(BINDIR)/$(PROJECT_NAME)
+	rm -f $(DESTDIR)$(MANDIR)/$(PROJECT_NAME).1.gz
+	rm -rf $(DESTDIR)$(DOCDIR_INSTALL)
+	@echo "$(GREEN)Uninstallation completed$(NC)"
+
+# Create a release package
+.PHONY: dist
+dist: clean
+	@echo "$(GREEN)Creating distribution package...$(NC)"
+	@mkdir -p $(DISTDIR)
+	@mkdir -p $(DISTDIR)/$(PROJECT_NAME)-$(VERSION)
+	@cp -r $(SOURCES) $(HEADERS) Makefile README.md LICENSE $(DISTDIR)/$(PROJECT_NAME)-$(VERSION)/ 2>/dev/null || true
+	@cd $(DISTDIR) && $(TAR) -czf $(PROJECT_NAME)-$(VERSION).tar.gz $(PROJECT_NAME)-$(VERSION)
+	@echo "$(GREEN)Distribution package created: $(DISTDIR)/$(PROJECT_NAME)-$(VERSION).tar.gz$(NC)"
+
+# Build all configurations
+.PHONY: all-configs
+all-configs:
+	@echo "$(GREEN)Building all configurations...$(NC)"
+	$(MAKE) BUILD_TYPE=debug
+	$(MAKE) BUILD_TYPE=release
+	$(MAKE) BUILD_TYPE=profile
+
+# Run static analysis
+.PHONY: analyze
+analyze:
+	@echo "$(BLUE)Running static analysis...$(NC)"
+	@if command -v cppcheck >/dev/null 2>&1; then \
+		cppcheck --enable=all --std=c++17 --suppress=missingIncludeSystem $(SOURCES); \
+	else \
+		echo "$(YELLOW)cppcheck not found, skipping static analysis$(NC)"; \
+	fi
+
+# Format code
+.PHONY: format
+format:
+	@echo "$(BLUE)Formatting code...$(NC)"
+	@if command -v clang-format >/dev/null 2>&1; then \
+		clang-format -i $(SOURCES) $(HEADERS); \
+		echo "$(GREEN)Code formatted$(NC)"; \
+	else \
+		echo "$(YELLOW)clang-format not found, skipping formatting$(NC)"; \
+	fi
+
+# Run tests
+.PHONY: test
+test: $(FINAL_TARGET)
+	@echo "$(BLUE)Running tests...$(NC)"
+	@if [ -d $(TESTDIR) ]; then \
+		cd $(TESTDIR) && ./run_tests.sh; \
+	else \
+		echo "$(YELLOW)No tests directory found$(NC)"; \
+	fi
+
+# Create documentation
+.PHONY: doc
+doc:
+	@echo "$(BLUE)Generating documentation...$(NC)"
+	@if command -v doxygen >/dev/null 2>&1; then \
+		doxygen Doxyfile 2>/dev/null || echo "$(YELLOW)Doxyfile not found$(NC)"; \
+	else \
+		echo "$(YELLOW)doxygen not found, skipping documentation$(NC)"; \
+	fi
+
+# Show build information
+.PHONY: info
+info:
+	@echo "$(BLUE)Build Information:$(NC)"
+	@echo "  Project: $(PROJECT_NAME) v$(VERSION)"
+	@echo "  Target: $(FINAL_TARGET)"
+	@echo "  Platform: $(PLATFORM) ($(UNAME_S) $(UNAME_M))"
+	@echo "  Build Type: $(BUILD_TYPE)"
+	@echo "  Compiler: $(CXX)"
+	@echo "  Compiler Flags: $(CXXFLAGS)"
+	@echo "  Linker Flags: $(LDFLAGS)"
+	@echo "  Libraries: $(LDLIBS)"
+	@echo "  Install Prefix: $(PREFIX)"
+
+# Show help
+.PHONY: help
+help:
+	@echo "$(BLUE)Available targets:$(NC)"
+	@echo "  all           - Build the project (default)"
+	@echo "  clean         - Remove build artifacts"
+	@echo "  distclean     - Remove all generated files"
+	@echo "  install       - Install the application"
+	@echo "  uninstall     - Uninstall the application"
+	@echo "  dist          - Create distribution package"
+	@echo "  all-configs   - Build all configurations (debug, release, profile)"
+	@echo "  analyze       - Run static analysis (requires cppcheck)"
+	@echo "  format        - Format source code (requires clang-format)"
+	@echo "  test          - Run tests"
+	@echo "  doc           - Generate documentation (requires doxygen)"
+	@echo "  info          - Show build information"
+	@echo "  help          - Show this help message"
+	@echo ""
+	@echo "$(BLUE)Build types (use BUILD_TYPE=<type>):$(NC)"
+	@echo "  debug         - Debug build with sanitizers"
+	@echo "  release       - Optimized release build (default)"
+	@echo "  profile       - Profiling build"
+	@echo ""
+	@echo "$(BLUE)Examples:$(NC)"
+	@echo "  make                    # Build release version"
+	@echo "  make BUILD_TYPE=debug   # Build debug version"
+	@echo "  make install PREFIX=/opt/launcher"
+	@echo "  make dist               # Create distribution package"
+
+# Dependencies
+launcher.o: launcher.cpp
+
+# Prevent make from deleting intermediate files
+.SECONDARY: $(OBJECTS)
+
+# Ensure build directory exists
+$(OBJECTS): | $(BUILDDIR)
+
+$(BUILDDIR):
+	@mkdir -p $(BUILDDIR)
